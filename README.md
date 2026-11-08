@@ -1,4 +1,4 @@
-# Video Notes
+# ClipNote
 
 Watch a video, pin notes to exact moments, and export them as a plain `.txt` file you can
 hand to someone (or to an AI assistant) so they know exactly what to fix and when.
@@ -7,7 +7,7 @@ It is a **single HTML file**: no install, no server, no build step.
 
 ## Getting started
 
-1. Open `video-notes.html` in your browser (double-click it).
+1. Open `clipnote.html` in your browser (double-click it).
 2. Click **Open video** or drag a video file onto the page.
 3. Watch, pause, and add notes. When you're done, click **Export notes** or **Copy**.
 

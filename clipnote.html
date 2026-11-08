@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Video Notes</title>
+<title>ClipNote</title>
 <style>
   :root {
     --bg: #111317; --panel: #1a1d23; --panel2: #23272f; --border: #2f343e;
@@ -149,7 +149,7 @@ const video = $('video'), timeline = $('timeline'), markersEl = $('markers'), li
 const draftInput = $('draftInput'), editorEl = $('editor');
 
 let file = null;          // the opened File
-let storageKey = null;    // "video-notes:" + name + ":" + size
+let storageKey = null;    // "clipnote:" + name + ":" + size
 let notes = [];           // [{id, start, end, text}]
 let rangeStart = null;    // seconds, set with I
 let draft = null;         // {start, end, wasPlaying} while the add-note box is open
@@ -194,7 +194,15 @@ function hideToast() { $('toast').style.display = 'none'; }
 
 // ---------- storage ----------
 function load() {
-  try { const v = JSON.parse(localStorage.getItem(storageKey)); return Array.isArray(v) ? v : []; }
+  try {
+    // move notes saved before the rename (old "video-notes:" key) to the new key
+    const legacyKey = storageKey.replace(/^clipnote:/, 'video-notes:');
+    if (localStorage.getItem(storageKey) === null && localStorage.getItem(legacyKey) !== null) {
+      localStorage.setItem(storageKey, localStorage.getItem(legacyKey));
+      localStorage.removeItem(legacyKey);
+    }
+    const v = JSON.parse(localStorage.getItem(storageKey)); return Array.isArray(v) ? v : [];
+  }
   catch { return []; }
 }
 function save() {
@@ -211,7 +219,7 @@ function openFile(f) {
   }
   if (video.src) URL.revokeObjectURL(video.src);
   file = f;
-  storageKey = 'video-notes:' + f.name + ':' + f.size;
+  storageKey = 'clipnote:' + f.name + ':' + f.size;
   notes = load();
   rangeStart = null; draft = null; editing = null; activeId = null;
   measuredFrame = Infinity;
