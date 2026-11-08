@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Notes</title>
+<style>
+  :root {
+    --bg: #111317; --panel: #1a1d23; --panel2: #23272f; --border: #2f343e;
+    --text: #e6e8eb; --muted: #8b929e; --accent: #4f9cff; --range: #f5a524; --danger: #ff6464;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .app { max-width: 1100px; margin: 0 auto; padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+  button, select, input[type=text] {
+    font: inherit; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px;
+  }
+  button { cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.icon { padding: 2px 8px; background: transparent; border-color: transparent; }
+  button.icon:hover { border-color: var(--border); }
+  input[type=text] { width: 100%; }
+  input[type=text]:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+
+  header { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  #fileName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+
+  .stage { position: relative; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; min-height: 240px; }
+  video { display: block; width: 100%; max-height: 58vh; }
+  .placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); text-align: center; padding: 16px; }
+  body.has-video .placeholder { display: none; }
+  body:not(.has-video) video { visibility: hidden; height: 0; }
+  body.dragging .stage { outline: 3px dashed var(--accent); outline-offset: -3px; }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #playBtn { width: 44px; }
+  .spacer { flex: 1; }
+  .chip { background: rgba(245,165,36,.15); color: var(--range); border: 1px solid rgba(245,165,36,.4); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; }
+  .chip button { padding: 0 6px; background: none; border: none; color: inherit; }
+
+  .timeline { position: relative; height: 34px; cursor: pointer; touch-action: none; user-select: none; }
+  .track { position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
+  .progress { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .55; }
+  .rangeSel { position: absolute; top: 0; bottom: 0; background: var(--range); opacity: .7; display: none; }
+  .playhead { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--accent); pointer-events: none; }
+  .marker { position: absolute; top: 0; width: 12px; margin-left: -6px; height: 12px; cursor: pointer; }
+  .marker::after { content: ""; position: absolute; left: 1px; top: 0; border: 5px solid transparent; border-top: 8px solid var(--range); }
+  .marker:hover::after { border-top-color: #fff; }
+  .markerSpan { position: absolute; top: 50%; height: 6px; margin-top: -3px; background: var(--range); opacity: .35; pointer-events: none; }
+  .tooltip { position: fixed; z-index: 10; max-width: 320px; background: #000; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; pointer-events: none; transform: translate(-50%, -100%); display: none; }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .editor { display: flex; align-items: center; gap: 8px; }
+  .editor[hidden] { display: none; }
+  .time { color: var(--range); flex-shrink: 0; }
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; cursor: pointer; border-left: 3px solid transparent; }
+  li:hover { background: var(--panel2); }
+  li.active { border-left-color: var(--accent); background: rgba(79,156,255,.08); }
+  li.editing { cursor: default; background: var(--panel2); flex-wrap: wrap; }
+  li .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .empty { color: var(--muted); padding: 6px 8px; }
+
+  footer { display: flex; justify-content: center; gap: 10px; }
+  .help { color: var(--muted); font-size: 12px; text-align: center; }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #000; border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; display: none; align-items: center; gap: 12px; z-index: 20; }
+  .toast button { padding: 2px 10px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <button id="openBtn" class="primary">Open video</button>
+    <input id="fileInput" type="file" accept="video/*,.mov,.mkv,.m4v" hidden>
+    <span id="fileName" class="muted">No video loaded</span>
+    <span id="fileDur" class="mono muted"></span>
+  </header>
+
+  <div class="stage">
+    <video id="video" playsinline preload="auto"></video>
+    <div class="placeholder">
+      <div style="font-size:28px">🎬</div>
+      <div>Drop a video here, or click <b>Open video</b></div>
+      <div style="font-size:12px">Drop its notes <b>.txt</b> too (or use <b>Import notes</b>) to put old notes back on the timeline.</div>
+      <div style="font-size:12px">MP4, WebM, MOV: anything your browser can play. Nothing is uploaded.</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="playBtn" title="Play / pause (Space)" disabled>▶</button>
+    <button id="prevFrame" class="icon" title="Previous frame (,)" disabled>⏮</button>
+    <button id="nextFrame" class="icon" title="Next frame (.)" disabled>⏭</button>
+    <span class="mono"><span id="curTime">00:00.0</span> <span class="muted">/ <span id="totTime">00:00.0</span></span></span>
+    <label class="muted">speed
+      <select id="speed">
+        <option value="0.25">0.25x</option><option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option><option value="1.5">1.5x</option><option value="2">2x</option>
+      </select>
+    </label>
+    <span class="spacer"></span>
+    <span id="rangeChip" class="chip" hidden>Range from <span id="rangeStartLbl" class="mono"></span> <button id="clearRange" title="Clear range (Esc)">✕</button></span>
+  </div>
+
+  <div id="timeline" class="timeline">
+    <div class="track"><div id="rangeSel" class="rangeSel"></div><div id="progress" class="progress"></div></div>
+    <div id="markers"></div>
+    <div id="playhead" class="playhead" style="left:0"></div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <button id="addBtn" disabled>+ Add note</button>
+      <span class="muted" style="font-size:12px">Press <kbd>I</kbd> to mark a range start, then <kbd>N</kbd> to note the whole range.</span>
+    </div>
+    <div id="editor" class="editor" hidden>
+      <span id="draftTime" class="time mono"></span>
+      <input id="draftInput" type="text" placeholder="What needs fixing here? (Enter to save, Esc to cancel)">
+      <button id="draftSave" class="primary">Save</button>
+      <button id="draftCancel">Cancel</button>
+    </div>
+    <ul id="noteList"></ul>
+  </div>
+
+  <footer>
+    <button id="importBtn" title="Load notes from a .txt file onto this video" disabled>Import notes</button>
+    <input id="notesInput" type="file" accept=".txt,text/plain" hidden>
+    <button id="copyBtn" disabled>Copy</button>
+    <button id="exportBtn" class="primary" disabled>Export notes</button>
+  </footer>
+  <div class="help">
+    <kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> ±5 s · <kbd>,</kbd><kbd>.</kbd> frame step ·
+    <kbd>N</kbd> add note · <kbd>I</kbd> range start · <kbd>E</kbd> export · <kbd>Esc</kbd> cancel
+  </div>
+</div>
+<div id="tooltip" class="tooltip"></div>
+<div id="toast" class="toast"><span id="toastMsg"></span><button id="toastAction" hidden></button></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const video = $('video'), timeline = $('timeline'), markersEl = $('markers'), listEl = $('noteList');
+const draftInput = $('draftInput'), editorEl = $('editor');
+
+let file = null;          // the opened File
+let storageKey = null;    // "video-notes:" + name + ":" + size
+let notes = [];           // [{id, start, end, text}]
+let rangeStart = null;    // seconds, set with I
+let draft = null;         // {start, end, wasPlaying} while the add-note box is open
+let editing = null;       // {id, start, end} while a note is being edited
+let measuredFrame = Infinity; // shortest frame duration seen during playback
+let activeId = null;
+
+// ---------- helpers ----------
+function fmt(t) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const tenths = Math.round(t * 10);
+  const h = Math.floor(tenths / 36000), m = Math.floor(tenths % 36000 / 600);
+  const s = (tenths % 600 / 10).toFixed(1).padStart(4, '0');
+  const mm = String(m).padStart(2, '0');
+  return h ? `${h}:${mm}:${s}` : `${mm}:${s}`;
+}
+const label = n => n.end != null ? `${fmt(n.start)} - ${fmt(n.end)}` : fmt(n.start);
+const dur = () => isFinite(video.duration) ? video.duration : 0;
+const clamp = t => Math.min(dur(), Math.max(0, t));
+const frameDur = () => measuredFrame < 0.2 ? measuredFrame : 1 / 30;
+const sorted = () => notes.slice().sort((a, b) => a.start - b.start || (a.end ?? a.start) - (b.end ?? b.start));
+const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+function el(tag, props = {}, ...children) {
+  const e = document.createElement(tag);
+  Object.assign(e, props);
+  for (const c of children) e.append(c);
+  return e;
+}
+
+let toastTimer;
+function toast(msg, actionLabel, action) {
+  $('toastMsg').textContent = msg;
+  const btn = $('toastAction');
+  btn.hidden = !actionLabel;
+  if (actionLabel) { btn.textContent = actionLabel; btn.onclick = () => { action(); hideToast(); }; }
+  $('toast').style.display = 'flex';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, actionLabel ? 5000 : 2200);
+}
+function hideToast() { $('toast').style.display = 'none'; }
+
+// ---------- storage ----------
+function load() {
+  try { const v = JSON.parse(localStorage.getItem(storageKey)); return Array.isArray(v) ? v : []; }
+  catch { return []; }
+}
+function save() {
+  if (!storageKey) return;
+  try { notes.length ? localStorage.setItem(storageKey, JSON.stringify(notes)) : localStorage.removeItem(storageKey); }
+  catch { toast('Could not auto-save notes (storage unavailable)'); }
+}
+
+// ---------- open video ----------
+function openFile(f) {
+  if (!f) return;
+  if (!f.type.startsWith('video/') && !/\.(mp4|m4v|mov|webm|mkv|ogv)$/i.test(f.name)) {
+    toast('That does not look like a video file'); return;
+  }
+  if (video.src) URL.revokeObjectURL(video.src);
+  file = f;
+  storageKey = 'video-notes:' + f.name + ':' + f.size;
+  notes = load();
+  rangeStart = null; draft = null; editing = null; activeId = null;
+  measuredFrame = Infinity;
+  editorEl.hidden = true;
+  video.src = URL.createObjectURL(f);
+  video.playbackRate = +$('speed').value;
+  $('fileName').textContent = f.name;
+  $('fileName').classList.remove('muted');
+  $('fileDur').textContent = '';
+  document.body.classList.add('has-video');
+  document.querySelectorAll('button:disabled').forEach(b => b.disabled = false);
+  render();
+  if (notes.length) toast(`Restored ${notes.length} saved note${notes.length > 1 ? 's' : ''}`);
+}
+
+$('openBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
+
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+  const files = [...e.dataTransfer.files];
+  const vid = files.find(f => !isNotesFile(f));
+  const txt = files.find(isNotesFile);
+  if (vid) openFile(vid);
+  if (txt) importNotes(txt);
+});
+
+video.addEventListener('loadedmetadata', () => { render(); watchFrames(); });
+video.addEventListener('durationchange', render);
+video.addEventListener('error', () => { if (file) toast("Your browser can't play this file. Try MP4 (H.264) or WebM."); });
+video.addEventListener('play', () => $('playBtn').textContent = '⏸');
+video.addEventListener('pause', () => $('playBtn').textContent = '▶');
+
+// Learn the real frame duration while playing, so , / . step exactly one frame.
+let frameGen = 0;
+function watchFrames() {
+  if (!video.requestVideoFrameCallback) return;
+  const gen = ++frameGen;
+  let prev = null;
+  const cb = (now, m) => {
+    if (gen !== frameGen) return;
+    if (video.paused || video.seeking) prev = null;
+    else {
+      if (prev && m.presentedFrames === prev.f + 1) {
+        const d = m.mediaTime - prev.t;
+        if (d > 0.004 && d < measuredFrame) measuredFrame = d;
+      }
+      prev = { f: m.presentedFrames, t: m.mediaTime };
+    }
+    video.requestVideoFrameCallback(cb);
+  };
+  video.requestVideoFrameCallback(cb);
+}
+
+// ---------- playback ----------
+function togglePlay() { if (!dur()) return; video.paused ? video.play() : video.pause(); }
+function seek(t) { if (!dur()) return; video.currentTime = clamp(t); updateTime(); }
+function stepFrame(dir) {
+  if (!dur()) return;
+  video.pause();
+  const fd = frameDur();
+  const idx = Math.floor(video.currentTime / fd + 1e-6);
+  seek((idx + dir + 0.5) * fd); // aim for the middle of the frame so the browser shows the right one
+}
+
+$('playBtn').onclick = togglePlay;
+$('prevFrame').onclick = () => stepFrame(-1);
+$('nextFrame').onclick = () => stepFrame(1);
+$('speed').onchange = e => { video.playbackRate = +e.target.value; e.target.blur(); };
+video.addEventListener('click', togglePlay);
+
+// ---------- timeline ----------
+let scrubbing = false;
+const timeAt = e => {
+  const r = timeline.getBoundingClientRect();
+  return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * dur();
+};
+timeline.addEventListener('pointerdown', e => {
+  if (!dur() || e.target.closest('.marker')) return;
+  scrubbing = true;
+  timeline.setPointerCapture(e.pointerId);
+  seek(timeAt(e));
+});
+timeline.addEventListener('pointermove', e => { if (scrubbing) seek(timeAt(e)); });
+timeline.addEventListener('pointerup', () => scrubbing = false);
+timeline.addEventListener('pointercancel', () => scrubbing = false);
+
+const tooltip = $('tooltip');
+function showTip(target, text) {
+  const r = target.getBoundingClientRect();
+  tooltip.textContent = text;
+  tooltip.style.display = 'block';
+  const half = Math.min(tooltip.offsetWidth / 2, innerWidth / 2);
+  tooltip.style.left = Math.min(innerWidth - half - 8, Math.max(half + 8, r.left + r.width / 2)) + 'px';
+  tooltip.style.top = (r.top - 6) + 'px';
+}
+function hideTip() { tooltip.style.display = 'none'; }
+
+function renderMarkers() {
+  markersEl.replaceChildren();
+  const d = dur();
+  if (!d) return;
+  const pct = t => Math.min(100, Math.max(0, t / d * 100)); // imported notes may lie past the end
+  for (const n of sorted()) {
+    if (n.end != null) {
+      markersEl.append(el('div', { className: 'markerSpan', style: `left:${pct(n.start)}%;width:${pct(n.end) - pct(n.start)}%` }));
+    }
+    const m = el('div', { className: 'marker' });
+    m.style.left = pct(n.start) + '%';
+    m.onmouseenter = () => showTip(m, `[${label(n)}] ${n.text}`);
+    m.onmouseleave = hideTip;
+    m.onclick = () => seek(n.start);
+    markersEl.append(m);
+  }
+}
+
+// Called every animation frame the time changes, and after seeks.
+function updateTime() {
+  const t = video.currentTime, d = dur();
+  const pct = d ? t / d * 100 : 0;
+  $('curTime').textContent = fmt(t);
+  $('progress').style.width = pct + '%';
+  $('playhead').style.left = pct + '%';
+
+  const rs = $('rangeSel');
+  if (rangeStart != null && d) {
+    const a = Math.min(rangeStart, t), b = Math.max(rangeStart, t);
+    rs.style.display = 'block';
+    rs.style.left = (a / d * 100) + '%';
+    rs.style.width = ((b - a) / d * 100) + '%';
+    $('addBtn').textContent = `+ Add note ${fmt(a)} - ${fmt(b)}`;
+  } else {
+    rs.style.display = 'none';
+    $('addBtn').textContent = d ? `+ Add note at ${fmt(t)}` : '+ Add note';
+  }
+
+  // highlight the note we're currently "in"
+  let id = null;
+  for (const n of sorted()) {
+    if (n.start <= t + 0.05) id = n.id; else break;
+  }
+  if (id !== activeId) {
+    activeId = id;
+    for (const li of listEl.children) li.classList.toggle('active', li.dataset.id === id);
+  }
+}
+let lastT = -1;
+(function tick() {
+  if (video.currentTime !== lastT) { lastT = video.currentTime; updateTime(); }
+  requestAnimationFrame(tick);
+})();
+
+// ---------- range ----------
+function markRange() {
+  if (!dur()) return;
+  rangeStart = video.currentTime;
+  $('rangeStartLbl').textContent = fmt(rangeStart);
+  $('rangeChip').hidden = false;
+  updateTime();
+}
+function clearRange() {
+  rangeStart = null;
+  $('rangeChip').hidden = true;
+  updateTime();
+}
+$('clearRange').onclick = clearRange;
+
+// ---------- adding notes ----------
+function openDraft() {
+  if (!dur()) return;
+  const wasPlaying = draft ? draft.wasPlaying : !video.paused;
+  video.pause();
+  const t = video.currentTime;
+  draft = { start: t, end: null, wasPlaying };
+  if (rangeStart != null && Math.abs(t - rangeStart) >= 0.05) {
+    draft.start = Math.min(rangeStart, t);
+    draft.end = Math.max(rangeStart, t);
+  }
+  $('draftTime').textContent = label(draft);
+  editorEl.hidden = false;
+  draftInput.value = '';
+  draftInput.focus();
+}
+function closeDraft(resume) {
+  if (!draft) return;
+  const wasPlaying = draft.wasPlaying;
+  draft = null;
+  editorEl.hidden = true;
+  draftInput.blur();
+  if (resume && wasPlaying) video.play();
+}
+function commitDraft() {
+  const text = draftInput.value.trim();
+  if (!draft) return;
+  if (!text) { closeDraft(true); return; }
+  notes.push({ id: newId(), start: draft.start, end: draft.end, text });
+  save();
+  clearRange();
+  closeDraft(true);
+  render();
+}
+$('addBtn').onclick = openDraft;
+$('draftSave').onclick = commitDraft;
+$('draftCancel').onclick = () => closeDraft(true);
+draftInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); commitDraft(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeDraft(true); }
+});
+
+// ---------- notes list ----------
+function deleteNote(id) {
+  const i = notes.findIndex(n => n.id === id);
+  if (i < 0) return;
+  const [removed] = notes.splice(i, 1);
+  if (editing && editing.id === id) editing = null;
+  save(); render();
+  toast('Note deleted', 'Undo', () => { notes.push(removed); save(); render(); });
+}
+function startEdit(n) {
+  editing = { id: n.id, start: n.start, end: n.end };
+  render();
+}
+function saveEdit(input) {
+  const n = notes.find(n => n.id === editing.id);
+  const text = input.value.trim();
+  if (n && text) Object.assign(n, { start: editing.start, end: editing.end, text });
+  editing = null;
+  save(); render();
+}
+
+function render() {
+  const d = dur();
+  $('fileDur').textContent = d ? `(${fmt(d)})` : '';
+  $('totTime').textContent = fmt(d);
+  renderMarkers();
+
+  listEl.replaceChildren();
+  const list = sorted();
+  if (!list.length) {
+    listEl.append(el('li', { className: 'empty', textContent: file ? 'No notes yet. Press N to add one.' : 'Open a video to start taking notes.' }));
+  }
+  for (const n of list) {
+    const li = el('li');
+    li.dataset.id = n.id;
+    if (editing && editing.id === n.id) {
+      li.className = 'editing';
+      const time = el('span', { className: 'time mono', textContent: label(editing) });
+      const input = el('input', { type: 'text', value: n.text });
+      input.style.flex = '1 1 240px';
+      input.onkeydown = e => {
+        if (e.key === 'Enter') { e.preventDefault(); saveEdit(input); }
+        else if (e.key === 'Escape') { e.preventDefault(); editing = null; render(); }
+      };
+      const move = el('button', { textContent: 'Move to current time', title: 'Re-pin this note at the playhead' });
+      move.onclick = () => {
+        const t = video.currentTime;
+        if (editing.end != null) editing.end = clamp(t + (editing.end - editing.start));
+        editing.start = t;
+        time.textContent = label(editing);
+        input.focus();
+      };
+      const ok = el('button', { className: 'primary', textContent: 'Save', onclick: () => saveEdit(input) });
+      const cancel = el('button', { textContent: 'Cancel', onclick: () => { editing = null; render(); } });
+      li.append(time, input, move, ok, cancel);
+      listEl.append(li);
+      setTimeout(() => { input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
+      continue;
+    }
+    if (n.id === activeId) li.classList.add('active');
+    const edit = el('button', { className: 'icon', textContent: '✎', title: 'Edit' });
+    edit.onclick = e => { e.stopPropagation(); startEdit(n); };
+    const del = el('button', { className: 'icon', textContent: '🗑', title: 'Delete' });
+    del.onclick = e => { e.stopPropagation(); deleteNote(n.id); };
+    li.append(el('span', { className: 'time mono', textContent: label(n) }), el('span', { className: 'text', textContent: n.text }), edit, del);
+    li.onclick = () => seek(n.start);
+    listEl.append(li);
+  }
+  updateTime();
+}
+
+// ---------- export ----------
+function buildText() {
+  const lines = [`Video: ${file.name}`, `Duration: ${fmt(dur())}`, `Notes: ${notes.length}`, ''];
+  for (const n of sorted()) lines.push(`[${label(n)}] ${n.text}`);
+  return lines.join('\n') + '\n';
+}
+function exportNotes() {
+  if (!file) return;
+  const blob = new Blob([buildText()], { type: 'text/plain;charset=utf-8' });
+  const a = el('a', { href: URL.createObjectURL(blob), download: file.name.replace(/\.[^.]+$/, '') + '_notes.txt' });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('Notes exported');
+}
+async function copyNotes() {
+  if (!file) return;
+  const text = buildText();
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = el('textarea', { value: text });
+    document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  toast('Notes copied to clipboard');
+}
+$('exportBtn').onclick = exportNotes;
+$('copyBtn').onclick = copyNotes;
+
+// ---------- import ----------
+// Reads the same format Export writes:  [00:12.4] text   or   [00:40.0 - 00:47.5] text
+// Also accepts lines without brackets ("1:02:03.5 - 1:02:09 text"), h:mm:ss, and "," decimals.
+// Lines that don't start with a time are appended to the previous note (multi-line notes).
+const TIME = String.raw`\d+(?::\d{1,2}){0,2}(?:[.,]\d+)?`;
+const BRACKET_RE = new RegExp(String.raw`^\s*\[\s*(${TIME})\s*(?:(?:-|–|—|to)\s*(${TIME})\s*)?\]\s*[:\-–—]?\s*(.*)$`, 'i');
+const LOOSE_RE = new RegExp(String.raw`^\s*(\d+:\d{1,2}(?::\d{1,2})?(?:[.,]\d+)?)\s*(?:(?:-|–|—|to)\s*(${TIME})\s*)?[:\-–—]?\s+(.+)$`, 'i');
+
+const isNotesFile = f => f.type === 'text/plain' || /\.txt$/i.test(f.name);
+
+function parseTime(s) {
+  const parts = s.replace(',', '.').split(':').map(Number);
+  if (parts.some(isNaN)) return NaN;
+  return parts.reduce((acc, p) => acc * 60 + p, 0);
+}
+
+function parseNotes(text) {
+  const out = [];
+  let videoName = null, last = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { last = null; continue; }
+    const m = line.match(BRACKET_RE) || line.match(LOOSE_RE);
+    if (m) {
+      let start = parseTime(m[1]), end = m[2] != null ? parseTime(m[2]) : null;
+      if (isNaN(start)) continue;
+      if (end != null && (isNaN(end) || Math.abs(end - start) < 0.05)) end = null;
+      if (end != null && end < start) [start, end] = [end, start];
+      last = { id: newId(), start, end, text: m[3].trim() };
+      out.push(last);
+    } else if (!out.length) {
+      const v = line.match(/^Video:\s*(.+)$/i);
+      if (v) videoName = v[1].trim();
+    } else if (last) {
+      last.text += (last.text ? ' ' : '') + line;
+    }
+  }
+  return { videoName, notes: out.filter(n => n.text) };
+}
+
+async function importNotes(f) {
+  if (!f) return;
+  if (!file) { toast('Open the video first, then import its notes'); return; }
+  let text;
+  try { text = await f.text(); } catch { toast('Could not read that file'); return; }
+  const { videoName, notes: incoming } = parseNotes(text);
+  if (!incoming.length) { toast('No timestamped notes found in that file'); return; }
+
+  const d = dur();
+  let outside = 0;
+  const same = (a, b) => Math.abs(a.start - b.start) < 0.05 &&
+    (a.end == null) === (b.end == null) && (a.end == null || Math.abs(a.end - b.end) < 0.05) &&
+    a.text === b.text;
+  const added = [];
+  for (const n of incoming) {
+    if (notes.some(x => same(x, n)) || added.some(x => same(x, n))) continue;
+    if (d && n.start > d + 0.05) outside++;
+    added.push(n);
+  }
+  if (!added.length) { toast('All notes in that file are already on this video'); return; }
+
+  notes.push(...added);
+  save(); render();
+  let msg = `Imported ${added.length} note${added.length > 1 ? 's' : ''}`;
+  const skipped = incoming.length - added.length;
+  if (skipped) msg += `, skipped ${skipped} duplicate${skipped > 1 ? 's' : ''}`;
+  if (outside) msg += `. ${outside} past the end of this video`;
+  if (videoName && videoName !== file.name) msg += ` (file was for "${videoName}")`;
+  const ids = new Set(added.map(n => n.id));
+  toast(msg, 'Undo', () => { notes = notes.filter(n => !ids.has(n.id)); save(); render(); });
+}
+
+$('importBtn').onclick = () => $('notesInput').click();
+$('notesInput').onchange = e => { importNotes(e.target.files[0]); e.target.value = ''; };
+
+// ---------- keyboard ----------
+document.addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const actions = {
+    ' ': togglePlay,
+    ArrowLeft: () => seek(video.currentTime - 5),
+    ArrowRight: () => seek(video.currentTime + 5),
+    ',': () => stepFrame(-1),
+    '.': () => stepFrame(1),
+    n: openDraft,
+    i: markRange,
+    e: exportNotes,
+    Escape: () => { if (editing) { editing = null; render(); } else clearRange(); },
+  };
+  const fn = actions[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+  if (!fn) return;
+  e.preventDefault();
+  fn();
+});
+// stop Space from also "clicking" whichever button has focus
+document.addEventListener('keyup', e => { if (e.key === ' ' && e.target.tagName === 'BUTTON') e.preventDefault(); });
+
+render();
+</script>
+</body>
+</html>
