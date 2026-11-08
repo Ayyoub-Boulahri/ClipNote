@@ -1,0 +1,59 @@
+{
+  "name": "clipnote",
+  "productName": "ClipNote",
+  "desktopName": "clipnote.desktop",
+  "version": "1.0.0",
+  "description": "Watch a video, pin notes to exact moments, and export them as a plain-text file.",
+  "main": "main.js",
+  "author": "Ayyoubboulahri",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.ayyoubboulahri.clipnote",
+    "productName": "ClipNote",
+    "files": [
+      "main.js",
+      {
+        "from": "../web",
+        "to": "web",
+        "filter": [
+          "clipnote.html"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "AudioVideo",
+      "syncDesktopName": true
+    },
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.video"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  }
+}
