@@ -3,16 +3,54 @@
 Watch a video, pin notes to exact moments, and export them as a plain `.txt` file you can
 hand to someone (or to an AI assistant) so they know exactly what to fix and when.
 
-It is a **single HTML file**: no install, no server, no build step.
+It comes in two versions that share the same page:
 
-## Getting started
+- **Web**: a single HTML file. No install, no server, no build step.
+- **Desktop**: an [Electron](https://www.electronjs.org/) app for Windows, Linux and macOS.
 
-1. Open `clipnote.html` in your browser (double-click it).
+## Project layout
+
+```
+web/clipnote.html   the whole app (HTML, CSS and JS in one file)
+desktop/            Electron wrapper that loads web/clipnote.html
+```
+
+The desktop app has no copy of the page: it loads `web/clipnote.html` while developing and
+bundles it at build time, so a change to the web version reaches both.
+
+## Web version
+
+1. Open `web/clipnote.html` in your browser (double-click it).
 2. Click **Open video** or drag a video file onto the page.
 3. Watch, pause, and add notes. When you're done, click **Export notes** or **Copy**.
 
 The video never leaves your computer: it's loaded locally in the browser, so large files
 work fine. Any format your browser can play is supported (MP4/H.264, WebM, usually MOV).
+
+## Desktop version
+
+Requires [Node.js](https://nodejs.org/).
+
+```bash
+cd desktop
+npm install
+npm start            # run the app
+```
+
+Build a package (output goes to `desktop/dist/`):
+
+| Command              | Output                                                       |
+|----------------------|--------------------------------------------------------------|
+| `npm run dist:win`   | `ClipNote-<version>-win.zip`: unzip and run `ClipNote.exe`   |
+| `npm run dist:linux` | `ClipNote-<version>.AppImage`                                |
+| `npm run dist:mac`   | `ClipNote-<version>.dmg` (must be built on a Mac)            |
+
+The Windows build is a portable zip rather than an installer, so it can be built on Linux
+without Wine. It isn't code-signed, so Windows SmartScreen may warn on first launch
+(**More info → Run anyway**).
+
+The desktop app keeps its saved notes separately from the browser, so notes written in the
+web version don't show up there (and vice versa). Use **Export** / **Import** to move them.
 
 ## Features
 
